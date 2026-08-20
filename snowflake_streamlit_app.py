@@ -41,28 +41,47 @@ PRIORITY_COLORS = {"Critical":"#dc3545","High":"#fd7e14","Medium":"#ffc107","Low
 # ─────────────────────────────────────────────────────────────────────
 # CONSTANTS
 # ─────────────────────────────────────────────────────────────────────
-STATES = ["Maharashtra","Uttar Pradesh","Karnataka","Tamil Nadu","Rajasthan",
-          "Gujarat","West Bengal","Madhya Pradesh","Bihar","Delhi"]
+STATES = [
+    "Maharashtra","Uttar Pradesh","Karnataka","Tamil Nadu","Rajasthan",
+    "Gujarat","West Bengal","Madhya Pradesh","Bihar","Delhi",
+    "Andhra Pradesh","Telangana","Kerala","Punjab","Haryana",
+    "Odisha","Jharkhand","Chhattisgarh","Assam","Uttarakhand",
+    "Himachal Pradesh","Goa","Jammu & Kashmir","Manipur","Tripura",
+    "Meghalaya","Nagaland","Sikkim",
+]
 
 DISTRICTS = {
-    "Maharashtra":["Mumbai","Pune","Nagpur","Nashik"],
-    "Uttar Pradesh":["Lucknow","Allahabad","Varanasi","Kanpur"],
-    "Karnataka":["Bengaluru","Mysuru","Hubballi","Mangaluru"],
-    "Tamil Nadu":["Chennai","Coimbatore","Madurai","Salem"],
-    "Rajasthan":["Jaipur","Jodhpur","Udaipur","Kota"],
-    "Gujarat":["Ahmedabad","Surat","Vadodara","Rajkot"],
-    "West Bengal":["Kolkata","Howrah","Durgapur","Siliguri"],
-    "Madhya Pradesh":["Bhopal","Indore","Gwalior","Jabalpur"],
-    "Bihar":["Patna","Gaya","Muzaffarpur","Bhagalpur"],
-    "Delhi":["Central","South","North","East"],
+    "Maharashtra":      ["Mumbai","Pune","Nagpur","Nashik","Aurangabad","Solapur","Thane","Kolhapur","Amravati","Nanded"],
+    "Uttar Pradesh":    ["Lucknow","Allahabad","Varanasi","Kanpur","Agra","Meerut","Ghaziabad","Mathura","Bareilly","Gorakhpur"],
+    "Karnataka":        ["Bengaluru","Mysuru","Hubballi","Mangaluru","Belagavi","Davangere","Ballari","Kalaburagi","Tumkur","Shivamogga"],
+    "Tamil Nadu":       ["Chennai","Coimbatore","Madurai","Salem","Tiruchirappalli","Tirunelveli","Vellore","Erode","Thoothukudi","Dindigul"],
+    "Rajasthan":        ["Jaipur","Jodhpur","Udaipur","Kota","Bikaner","Ajmer","Alwar","Bharatpur","Sikar","Pali"],
+    "Gujarat":          ["Ahmedabad","Surat","Vadodara","Rajkot","Bhavnagar","Jamnagar","Junagadh","Gandhinagar","Anand","Mehsana"],
+    "West Bengal":      ["Kolkata","Howrah","Durgapur","Siliguri","Asansol","Kharagpur","Haldia","Malda","Murshidabad","Nadia"],
+    "Madhya Pradesh":   ["Bhopal","Indore","Gwalior","Jabalpur","Ujjain","Sagar","Rewa","Satna","Ratlam","Chhindwara"],
+    "Bihar":            ["Patna","Gaya","Muzaffarpur","Bhagalpur","Darbhanga","Ara","Begusarai","Katihar","Munger","Saharsa"],
+    "Delhi":            ["Central","South","North","East","West","Northwest","Southwest","New Delhi","Shahdara","Southeast"],
+    "Andhra Pradesh":   ["Visakhapatnam","Vijayawada","Guntur","Nellore","Kurnool","Tirupati","Kakinada","Rajahmundry","Kadapa","Anantapur"],
+    "Telangana":        ["Hyderabad","Warangal","Nizamabad","Karimnagar","Khammam","Mahbubnagar","Nalgonda","Adilabad","Suryapet","Medak"],
+    "Kerala":           ["Thiruvananthapuram","Kochi","Kozhikode","Thrissur","Kollam","Palakkad","Kannur","Alappuzha","Malappuram","Kottayam"],
+    "Punjab":           ["Ludhiana","Amritsar","Jalandhar","Patiala","Bathinda","Mohali","Hoshiarpur","Gurdaspur","Ferozepur","Moga"],
+    "Haryana":          ["Gurugram","Faridabad","Ambala","Rohtak","Hisar","Panipat","Karnal","Sonipat","Yamunanagar","Bhiwani"],
+    "Odisha":           ["Bhubaneswar","Cuttack","Rourkela","Berhampur","Sambalpur","Balasore","Puri","Jharsuguda","Rayagada","Koraput"],
+    "Jharkhand":        ["Ranchi","Jamshedpur","Dhanbad","Bokaro","Deoghar","Hazaribagh","Giridih","Ramgarh","Chaibasa","Dumka"],
+    "Chhattisgarh":     ["Raipur","Bhilai","Bilaspur","Korba","Durg","Rajnandgaon","Jagdalpur","Ambikapur","Dhamtari","Mahasamund"],
+    "Assam":            ["Guwahati","Silchar","Dibrugarh","Jorhat","Nagaon","Tezpur","Tinsukia","Karimganj","Hailakandi","Goalpara"],
+    "Uttarakhand":      ["Dehradun","Haridwar","Roorkee","Haldwani","Nainital","Rishikesh","Rudrapur","Kashipur","Srinagar","Pauri"],
+    "Himachal Pradesh": ["Shimla","Dharamshala","Solan","Mandi","Kullu","Hamirpur","Una","Chamba","Bilaspur","Nahan"],
+    "Goa":              ["Panaji","Margao","Vasco","Mapusa","Ponda","Bicholim","Canacona","Quepem","Sanguem","Pernem"],
+    "Jammu & Kashmir":  ["Srinagar","Jammu","Anantnag","Baramulla","Sopore","Kathua","Udhampur","Rajouri","Poonch","Leh"],
+    "Manipur":          ["Imphal","Thoubal","Bishnupur","Churachandpur","Senapati","Ukhrul","Tamenglong","Jiribam","Kakching","Kangpokpi"],
+    "Tripura":          ["Agartala","Dharmanagar","Udaipur","Kailasahar","Ambassa","Sabroom","Belonia","Khowai","Melaghar","Sonamura"],
+    "Meghalaya":        ["Shillong","Tura","Jowai","Nongstoin","Baghmara","Resubelpara","Ampati","Mairang","Nongpoh","Williamnagar"],
+    "Nagaland":         ["Kohima","Dimapur","Mokokchung","Tuensang","Wokha","Zunheboto","Mon","Phek","Kiphire","Longleng"],
+    "Sikkim":           ["Gangtok","Namchi","Gyalshing","Mangan","Jorethang","Rangpo","Singtam","Ravangla","Yuksom","Lachen"],
 }
 
 CATEGORIES = {
-    "POCSO":            {"base":120,"statutory":365},
-    "SC_ST":            {"base":180,"statutory":730},
-    "Senior_Citizen":   {"base":90, "statutory":180},
-    "Commercial":       {"base":270,"statutory":365},
-    "NDPS":             {"base":365,"statutory":1095},
     "Matrimonial":      {"base":540,"statutory":1825},
     "Motor_Accident":   {"base":730,"statutory":1825},
     "Property_Dispute": {"base":1095,"statutory":2920},
@@ -89,7 +108,7 @@ FEATURE_COLS = [
 # ─────────────────────────────────────────────────────────────────────
 # DATA GENERATION
 # ─────────────────────────────────────────────────────────────────────
-def generate_cases(n=3000, seed=42):
+def generate_cases(n=10000, seed=42):
     np.random.seed(seed); random.seed(seed)
     rows = []
     cat_names = list(CATEGORIES.keys())
@@ -99,7 +118,7 @@ def generate_cases(n=3000, seed=42):
     for i in range(n):
         state    = random.choice(STATES)
         district = random.choice(DISTRICTS[state])
-        court_id = f"{state[:3].upper()}-{district[:3].upper()}-{random.randint(1,15):02d}"
+        court_id = f"{state[:3].upper()}-{district[:3].upper()}-{random.randint(1,40):02d}"
         category = random.choice(cat_names)
         info     = CATEGORIES[category]
         case_type= random.choice(case_types)
@@ -285,7 +304,7 @@ def hybrid_priority(row):
 # FULL PIPELINE (cached so it runs only once per session)
 # ─────────────────────────────────────────────────────────────────────
 @st.cache_data(show_spinner=False)
-def run_pipeline(n_cases=3000):
+def run_pipeline(n_cases=10000):
     # 1. Generate data
     df = generate_cases(n=n_cases)
 
@@ -383,7 +402,7 @@ def main():
     # ── SIDEBAR
     with st.sidebar:
         st.markdown("## ⚙️ Settings")
-        n_cases = st.slider("Dataset size", 500, 5000, 3000, step=500)
+        n_cases = st.slider("Dataset size", 1000, 50000, 10000, step=1000)
         st.divider()
         st.markdown("### ℹ️ About")
         st.markdown("""

@@ -54,53 +54,93 @@ PRIORITY_COLORS = {
 # ────────────────────────────────────────────
 
 def _generate_demo_data():
-    """Generate lightweight demo data when running on cloud without model files."""
+    """Generate demo data when running on cloud without model files."""
     import random
     np.random.seed(42); random.seed(42)
-    n = 500
-    categories = ["POCSO","SC_ST","Senior_Citizen","Commercial","NDPS","Matrimonial","Motor_Accident","General_Civil","General_Criminal","Property_Dispute"]
-    stages     = ["Filing","Admission","Notice","Written_Statement","Evidence","Arguments","Judgment","Execution"]
-    states     = ["Maharashtra","Uttar Pradesh","Karnataka","Tamil Nadu","Rajasthan","Gujarat","West Bengal","Madhya Pradesh","Bihar","Delhi"]
-    districts  = {"Maharashtra":["Mumbai","Pune"],"Uttar Pradesh":["Lucknow","Varanasi"],"Karnataka":["Bengaluru","Mysuru"],"Tamil Nadu":["Chennai","Madurai"],"Rajasthan":["Jaipur","Jodhpur"],"Gujarat":["Ahmedabad","Surat"],"West Bengal":["Kolkata","Howrah"],"Madhya Pradesh":["Bhopal","Indore"],"Bihar":["Patna","Gaya"],"Delhi":["Central","South"]}
-    p_labels   = np.random.choice(["Critical","High","Medium","Low"], n, p=[0.11,0.68,0.15,0.06])
-    p_scores   = np.where(p_labels=="Critical", np.random.uniform(75,100,n),
-                 np.where(p_labels=="High",     np.random.uniform(50,75,n),
-                 np.where(p_labels=="Medium",   np.random.uniform(25,50,n),
-                                                np.random.uniform(0,25,n))))
-    p_emojis   = [{"Critical":"🔴","High":"🟠","Medium":"🟡","Low":"🟢"}[l] for l in p_labels]
-    st_arr     = np.random.choice(states, n)
+    n = 1500
+
+    DEMO_STATES = [
+        "Maharashtra","Uttar Pradesh","Karnataka","Tamil Nadu","Rajasthan",
+        "Gujarat","West Bengal","Madhya Pradesh","Bihar","Delhi",
+        "Andhra Pradesh","Telangana","Kerala","Punjab","Haryana",
+        "Odisha","Jharkhand","Chhattisgarh","Assam","Uttarakhand",
+        "Himachal Pradesh","Goa","Jammu & Kashmir","Manipur","Tripura",
+        "Meghalaya","Nagaland","Sikkim",
+    ]
+    DEMO_DISTRICTS = {
+        "Maharashtra":["Mumbai","Pune","Nagpur","Nashik","Aurangabad","Solapur","Thane","Kolhapur","Amravati","Nanded"],
+        "Uttar Pradesh":["Lucknow","Allahabad","Varanasi","Kanpur","Agra","Meerut","Ghaziabad","Mathura","Bareilly","Gorakhpur"],
+        "Karnataka":["Bengaluru","Mysuru","Hubballi","Mangaluru","Belagavi","Davangere","Ballari","Kalaburagi","Tumkur","Shivamogga"],
+        "Tamil Nadu":["Chennai","Coimbatore","Madurai","Salem","Tiruchirappalli","Tirunelveli","Vellore","Erode","Thoothukudi","Dindigul"],
+        "Rajasthan":["Jaipur","Jodhpur","Udaipur","Kota","Bikaner","Ajmer","Alwar","Bharatpur","Sikar","Pali"],
+        "Gujarat":["Ahmedabad","Surat","Vadodara","Rajkot","Bhavnagar","Jamnagar","Junagadh","Gandhinagar","Anand","Mehsana"],
+        "West Bengal":["Kolkata","Howrah","Durgapur","Siliguri","Asansol","Kharagpur","Haldia","Malda","Murshidabad","Nadia"],
+        "Madhya Pradesh":["Bhopal","Indore","Gwalior","Jabalpur","Ujjain","Sagar","Rewa","Satna","Ratlam","Chhindwara"],
+        "Bihar":["Patna","Gaya","Muzaffarpur","Bhagalpur","Darbhanga","Ara","Begusarai","Katihar","Munger","Saharsa"],
+        "Delhi":["Central","South","North","East","West","Northwest","Southwest","New Delhi","Shahdara","Southeast"],
+        "Andhra Pradesh":["Visakhapatnam","Vijayawada","Guntur","Nellore","Kurnool","Tirupati","Kakinada","Rajahmundry","Kadapa","Anantapur"],
+        "Telangana":["Hyderabad","Warangal","Nizamabad","Karimnagar","Khammam","Mahbubnagar","Nalgonda","Adilabad","Suryapet","Medak"],
+        "Kerala":["Thiruvananthapuram","Kochi","Kozhikode","Thrissur","Kollam","Palakkad","Kannur","Alappuzha","Malappuram","Kottayam"],
+        "Punjab":["Ludhiana","Amritsar","Jalandhar","Patiala","Bathinda","Mohali","Hoshiarpur","Gurdaspur","Ferozepur","Moga"],
+        "Haryana":["Gurugram","Faridabad","Ambala","Rohtak","Hisar","Panipat","Karnal","Sonipat","Yamunanagar","Bhiwani"],
+        "Odisha":["Bhubaneswar","Cuttack","Rourkela","Berhampur","Sambalpur","Balasore","Puri","Jharsuguda","Rayagada","Koraput"],
+        "Jharkhand":["Ranchi","Jamshedpur","Dhanbad","Bokaro","Deoghar","Hazaribagh","Giridih","Ramgarh","Chaibasa","Dumka"],
+        "Chhattisgarh":["Raipur","Bhilai","Bilaspur","Korba","Durg","Rajnandgaon","Jagdalpur","Ambikapur","Dhamtari","Mahasamund"],
+        "Assam":["Guwahati","Silchar","Dibrugarh","Jorhat","Nagaon","Tezpur","Tinsukia","Karimganj","Hailakandi","Goalpara"],
+        "Uttarakhand":["Dehradun","Haridwar","Roorkee","Haldwani","Nainital","Rishikesh","Rudrapur","Kashipur","Srinagar","Pauri"],
+        "Himachal Pradesh":["Shimla","Dharamshala","Solan","Mandi","Kullu","Hamirpur","Una","Chamba","Bilaspur","Nahan"],
+        "Goa":["Panaji","Margao","Vasco","Mapusa","Ponda","Bicholim","Canacona","Quepem","Sanguem","Pernem"],
+        "Jammu & Kashmir":["Srinagar","Jammu","Anantnag","Baramulla","Sopore","Kathua","Udhampur","Rajouri","Poonch","Leh"],
+        "Manipur":["Imphal","Thoubal","Bishnupur","Churachandpur","Senapati","Ukhrul","Tamenglong","Jiribam","Kakching","Kangpokpi"],
+        "Tripura":["Agartala","Dharmanagar","Udaipur","Kailasahar","Ambassa","Sabroom","Belonia","Khowai","Melaghar","Sonamura"],
+        "Meghalaya":["Shillong","Tura","Jowai","Nongstoin","Baghmara","Resubelpara","Ampati","Mairang","Nongpoh","Williamnagar"],
+        "Nagaland":["Kohima","Dimapur","Mokokchung","Tuensang","Wokha","Zunheboto","Mon","Phek","Kiphire","Longleng"],
+        "Sikkim":["Gangtok","Namchi","Gyalshing","Mangan","Jorethang","Rangpo","Singtam","Ravangla","Yuksom","Lachen"],
+    }
+    CATEGORIES_DEMO = ["POCSO","SC_ST","Senior_Citizen","Commercial","NDPS","Matrimonial",
+                       "Motor_Accident","General_Civil","General_Criminal","Property_Dispute",
+                       "Cheque_Bounce","Labour_Dispute","Consumer_Forum","Land_Acquisition","Constitutional_Writ"]
+    stages  = ["Filing","Admission","Notice","Written_Statement","Evidence","Arguments","Judgment","Execution"]
+
+    p_labels = np.random.choice(["Critical","High","Medium","Low"], n, p=[0.11,0.68,0.15,0.06])
+    p_scores = np.where(p_labels=="Critical", np.random.uniform(75,100,n),
+               np.where(p_labels=="High",     np.random.uniform(50,75,n),
+               np.where(p_labels=="Medium",   np.random.uniform(25,50,n),
+                                              np.random.uniform(0,25,n))))
+    p_emojis = [{"Critical":"🔴","High":"🟠","Medium":"🟡","Low":"🟢"}[l] for l in p_labels]
+    st_arr   = np.random.choice(DEMO_STATES, n)
     rows = []
     for i in range(n):
         s  = st_arr[i]
-        d  = random.choice(districts[s])
-        court_id = f"{s[:3].upper()}-{d[:3].upper()}-{random.randint(1,10):02d}"
+        d  = random.choice(DEMO_DISTRICTS[s])
+        court_id = f"{s[:3].upper()}-{d[:3].upper()}-{random.randint(1,40):02d}"
         rows.append({
-            "case_number":       f"CASE/{i+1:04d}/2022",
-            "court_id":          court_id,
-            "state":             s,
-            "district":          d,
-            "case_category":     np.random.choice(categories),
-            "case_type":         random.choice(["Civil","Criminal","Writ"]),
-            "current_stage":     random.choice(stages),
-            "case_age_days":     random.randint(100, 3000),
-            "stage_age_days":    random.randint(10, 400),
-            "hearings_held":     random.randint(1, 30),
-            "adjournments":      random.randint(0, 15),
-            "adjournment_rate":  round(random.uniform(0, 0.8), 2),
-            "stagnation_flag":   random.randint(0, 1),
-            "is_undertrial":     random.randint(0, 1),
-            "priority_score":    round(p_scores[i], 2),
-            "priority_label":    p_labels[i],
-            "priority_emoji":    p_emojis[i],
-            "disposal_days":     random.randint(30, 600),
+            "case_number":         f"CASE/{i+1:05d}/2022",
+            "court_id":            court_id,
+            "state":               s,
+            "district":            d,
+            "case_category":       random.choice(CATEGORIES_DEMO),
+            "case_type":           random.choice(["Civil","Criminal","Writ"]),
+            "current_stage":       random.choice(stages),
+            "case_age_days":       random.randint(100, 3500),
+            "stage_age_days":      random.randint(10, 400),
+            "hearings_held":       random.randint(1, 30),
+            "adjournments":        random.randint(0, 15),
+            "adjournment_rate":    round(random.uniform(0, 0.8), 2),
+            "stagnation_flag":     random.randint(0, 1),
+            "is_undertrial":       random.randint(0, 1),
+            "priority_score":      round(p_scores[i], 2),
+            "priority_label":      p_labels[i],
+            "priority_emoji":      p_emojis[i],
+            "disposal_days":       random.randint(30, 600),
             "legal_urgency_score": round(random.uniform(0, 100), 1),
             "delay_risk_score":    round(random.uniform(0, 100), 1),
-            "urgency_flags":     "Demo mode — run main.py for real flags",
-            "court_rank":        i + 1,
-            "docket_label":      f"[#{i+1}] {p_emojis[i]} {p_labels[i]}",
+            "urgency_flags":       "Demo mode — run main.py for real flags",
+            "court_rank":          i + 1,
+            "docket_label":        f"[#{i+1}] {p_emojis[i]} {p_labels[i]}",
         })
-    df      = pd.DataFrame(rows)
-    alerts  = pd.DataFrame([
+    df = pd.DataFrame(rows)
+    alerts = pd.DataFrame([
         {"case_number": r["case_number"], "court_id": r["court_id"],
          "alert_type": "CRITICAL_PRIORITY",
          "message": f"Critical priority [{r['case_category']}] case",
