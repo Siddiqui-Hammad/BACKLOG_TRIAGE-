@@ -383,14 +383,7 @@ def main():
     # ── SIDEBAR
     with st.sidebar:
         st.markdown("## ⚙️ Settings")
-        n_cases = st.slider("Dataset size", 500, 5000, 3000, step=500,
-                            help="Number of synthetic NJDG case records to generate and score")
-        st.divider()
-        st.markdown("### 🔍 Filters")
-        sel_state    = st.selectbox("State", ["All"] + sorted(STATES))
-        sel_category = st.multiselect("Case Category", list(CATEGORIES.keys()))
-        sel_priority = st.multiselect("Priority Label", ["Critical","High","Medium","Low"],
-                                      default=["Critical","High"])
+        n_cases = st.slider("Dataset size", 500, 5000, 3000, step=500)
         st.divider()
         st.markdown("### ℹ️ About")
         st.markdown("""
@@ -398,18 +391,35 @@ def main():
 - 🌳 **XGBoost** for delay prediction
 - ⚖️ **Legal rules** (POCSO, BNSS 479, SC/ST)
 - 🔀 **Hybrid scoring** (35/25/20/20 weights)
-- 📊 **SHAP-ready** explainability
+- 🏛️ **Court-wise** priority queue
         """)
 
-    # ── LOAD DATA
+    # ── LOAD DATA (must happen before filters that depend on data)
     with st.spinner("🔄 Generating cases & training XGBoost models..."):
         df, metrics, feat_imp = run_pipeline(n_cases=n_cases)
 
+    # ── SIDEBAR FILTERS (after data is loaded)
+    with st.sidebar:
+        st.divider()
+        st.markdown("### 🔍 Filters")
+        all_courts   = sorted(df["court_id"].unique().tolist())
+        sel_courts   = st.multiselect("🏛️ Court ID", all_courts, default=[])
+        sel_category = st.multiselect("📂 Case Category", list(CATEGORIES.keys()))
+        sel_priority = st.multiselect("🚦 Priority Label",
+                                      ["Critical","High","Medium","Low"],
+                                      default=["Critical","High"])
+        st.divider()
+        st.markdown("#### 📍 Location (optional)")
+        sel_state = st.selectbox("State", ["All"] + sorted(STATES))
+        courts_shown = len([c for c in all_courts if not sel_courts or c in sel_courts])
+        st.markdown(f"**{courts_shown:,} courts** in view")
+
     # Apply filters
     fdf = df.copy()
-    if sel_state != "All":       fdf = fdf[fdf["state"] == sel_state]
-    if sel_category:             fdf = fdf[fdf["case_category"].isin(sel_category)]
-    if sel_priority:             fdf = fdf[fdf["priority_label"].isin(sel_priority)]
+    if sel_courts:         fdf = fdf[fdf["court_id"].isin(sel_courts)]
+    if sel_state != "All": fdf = fdf[fdf["state"] == sel_state]
+    if sel_category:       fdf = fdf[fdf["case_category"].isin(sel_category)]
+    if sel_priority:       fdf = fdf[fdf["priority_label"].isin(sel_priority)]
 
     # ── TABS
     tab1, tab2, tab3, tab4, tab5 = st.tabs([

@@ -148,32 +148,33 @@ def render_header():
 def render_sidebar(df):
     st.sidebar.header("🔍 Filters")
 
-    states = ["All"] + sorted(df["state"].unique().tolist())
-    sel_state = st.sidebar.selectbox("State", states)
+    # ── Primary: Court
+    all_courts = sorted(df["court_id"].unique().tolist())
+    sel_courts = st.sidebar.multiselect("🏛️ Court ID", all_courts, default=[])
 
-    if sel_state != "All":
-        districts = ["All"] + sorted(df[df["state"] == sel_state]["district"].unique().tolist())
-    else:
-        districts = ["All"] + sorted(df["district"].unique().tolist())
-    sel_district = st.sidebar.selectbox("District", districts)
-
-    categories = ["All"] + sorted(df["case_category"].unique().tolist())
-    sel_category = st.sidebar.multiselect("Case Category", categories[1:], default=[])
-
+    # ── Secondary: Category & Priority
+    sel_category = st.sidebar.multiselect(
+        "📂 Case Category", sorted(df["case_category"].unique().tolist()), default=[]
+    )
     priority_labels = st.sidebar.multiselect(
-        "Priority Label",
+        "🚦 Priority Label",
         ["Critical", "High", "Medium", "Low"],
         default=["Critical", "High"],
     )
 
-    min_score, max_score = st.sidebar.slider("Priority Score Range", 0, 100, (0, 100))
+    min_score, max_score = st.sidebar.slider("🎯 Priority Score Range", 0, 100, (0, 100))
+
+    st.sidebar.divider()
+    st.sidebar.markdown("#### 📍 Location (optional)")
+    states = ["All"] + sorted(df["state"].unique().tolist())
+    sel_state = st.sidebar.selectbox("State", states)
 
     # Apply filters
     filtered = df.copy()
+    if sel_courts:
+        filtered = filtered[filtered["court_id"].isin(sel_courts)]
     if sel_state != "All":
         filtered = filtered[filtered["state"] == sel_state]
-    if sel_district != "All":
-        filtered = filtered[filtered["district"] == sel_district]
     if sel_category:
         filtered = filtered[filtered["case_category"].isin(sel_category)]
     if priority_labels:
@@ -183,8 +184,10 @@ def render_sidebar(df):
         (filtered["priority_score"] <= max_score)
     ]
 
-    st.sidebar.markdown(f"**Showing {len(filtered):,} of {len(df):,} cases**")
+    total_courts = filtered["court_id"].nunique()
+    st.sidebar.markdown(f"**{len(filtered):,} cases** across **{total_courts:,} courts**")
     return filtered
+
 
 
 # ────────────────────────────────────────────
@@ -193,24 +196,28 @@ def render_sidebar(df):
 
 def render_kpis(df, alerts):
     st.subheader("📊 Dashboard Overview")
-    col1, col2, col3, col4, col5 = st.columns(5)
+    col1, col2, col3, col4, col5, col6 = st.columns(6)
 
-    critical = (df["priority_label"] == "Critical").sum()
-    high     = (df["priority_label"] == "High").sum()
-    undertrial = df["is_undertrial"].sum() if "is_undertrial" in df.columns else 0
-    crit_alerts = len(alerts[alerts["severity"] == "CRITICAL"]) if not alerts.empty else 0
+    total_courts = df["court_id"].nunique()
+    critical     = (df["priority_label"] == "Critical").sum()
+    high         = (df["priority_label"] == "High").sum()
+    undertrial   = df["is_undertrial"].sum() if "is_undertrial" in df.columns else 0
+    crit_alerts  = len(alerts[alerts["severity"] == "CRITICAL"]) if not alerts.empty else 0
     avg_disposal = df["disposal_days"].mean() if "disposal_days" in df.columns else 0
 
     with col1:
-        st.metric("🔴 Critical Cases", f"{critical:,}", f"{critical/len(df)*100:.1f}% of total")
+        st.metric("🏛️ Courts", f"{total_courts:,}")
     with col2:
-        st.metric("🟠 High Priority", f"{high:,}", f"{high/len(df)*100:.1f}% of total")
+        st.metric("🔴 Critical Cases", f"{critical:,}", f"{critical/max(len(df),1)*100:.1f}%")
     with col3:
-        st.metric("⛓️ Undertrial (BNSS 479)", f"{int(undertrial):,}")
+        st.metric("🟠 High Priority", f"{high:,}", f"{high/max(len(df),1)*100:.1f}%")
     with col4:
-        st.metric("🚨 Critical Alerts", f"{crit_alerts:,}")
+        st.metric("⛓️ Undertrial", f"{int(undertrial):,}")
     with col5:
-        st.metric("📅 Avg Disposal (predicted)", f"{avg_disposal:.0f} days")
+        st.metric("🚨 Critical Alerts", f"{crit_alerts:,}")
+    with col6:
+        st.metric("📅 Avg Disposal", f"{avg_disposal:.0f} days")
+
 
 
 # ────────────────────────────────────────────
@@ -281,23 +288,64 @@ def render_charts(df):
 
 
 # ────────────────────────────────────────────
-# STATE HEATMAP
+# COURT-WISE CHARTS  ← replaces state heatmap
 # ────────────────────────────────────────────
 
-def render_state_map(df):
-    st.subheader("🗺️ State-wise Critical Case Load")
-    state_counts = df[df["priority_label"] == "Critical"].groupby("state").size().reset_index(name="critical_cases")
-    fig = px.bar(
-        state_counts.sort_values("critical_cases", ascending=True),
-        x="critical_cases", y="state",
-        orientation="h",
-        color="critical_cases",
-        color_continuous_scale="Reds",
-        title="Critical Cases by State",
-        template="plotly_white",
-    )
-    fig.update_layout(height=400, coloraxis_showscale=False)
-    st.plotly_chart(fig, use_container_width=True)
+def render_court_charts(df):
+    st.subheader("🏛️ Court-wise Backlog Analysis")
+    col1, col2 = st.columns(2)
+
+    # Top 20 courts by critical case count
+    with col1:
+        court_crit = (
+            df[df["priority_label"] == "Critical"]
+            .groupby("court_id").size()
+            .reset_index(name="Critical Cases")
+            .sort_values("Critical Cases", ascending=True)
+            .tail(20)
+        )
+        fig = px.bar(
+            court_crit, x="Critical Cases", y="court_id",
+            orientation="h",
+            color="Critical Cases",
+            color_continuous_scale="Reds",
+            title="Top 20 Courts — Critical Cases",
+            template="plotly_white",
+        )
+        fig.update_layout(height=430, coloraxis_showscale=False,
+                          yaxis_title="Court ID", xaxis_title="Critical Cases")
+        st.plotly_chart(fig, use_container_width=True)
+
+    # Court avg priority score bubble chart
+    with col2:
+        court_stats = df.groupby("court_id").agg(
+            total_cases     = ("case_number", "count"),
+            avg_priority    = ("priority_score", "mean"),
+            critical_count  = ("priority_label", lambda x: (x == "Critical").sum()),
+            avg_disposal    = ("disposal_days", "mean"),
+        ).reset_index()
+        court_stats["avg_priority"]  = court_stats["avg_priority"].round(1)
+        court_stats["avg_disposal"]  = court_stats["avg_disposal"].round(0)
+        fig2 = px.scatter(
+            court_stats.sort_values("avg_priority", ascending=False).head(50),
+            x="avg_priority", y="total_cases",
+            size="critical_count",
+            color="avg_priority",
+            color_continuous_scale="RdYlGn_r",
+            hover_name="court_id",
+            hover_data={"avg_disposal": True, "critical_count": True},
+            title="Court Priority vs. Caseload (bubble = critical count)",
+            template="plotly_white",
+            labels={
+                "avg_priority": "Avg Priority Score",
+                "total_cases":  "Total Cases",
+                "critical_count": "Critical Cases",
+                "avg_disposal": "Avg Disposal (days)",
+            }
+        )
+        fig2.update_layout(height=430, coloraxis_showscale=False)
+        st.plotly_chart(fig2, use_container_width=True)
+
 
 
 # ────────────────────────────────────────────
@@ -458,7 +506,7 @@ def main():
     with tab1:
         render_kpis(filtered_df, alerts)
         render_charts(filtered_df)
-        render_state_map(filtered_df)
+        render_court_charts(filtered_df)
 
     with tab2:
         render_priority_queue(filtered_df)
