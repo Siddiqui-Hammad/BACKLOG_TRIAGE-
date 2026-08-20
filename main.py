@@ -144,7 +144,7 @@ def step_score():
 
 
 def main():
-    parser = argparse.ArgumentParser(description="NJDG Case Prioritization System")
+    parser = argparse.ArgumentParser(description="Backlog Triage Case — ML Pipeline")
     parser.add_argument("--generate", action="store_true", help="Generate dataset")
     parser.add_argument("--train",    action="store_true", help="Train models")
     parser.add_argument("--score",    action="store_true", help="Run scoring pipeline")
@@ -154,7 +154,7 @@ def main():
     run_all = args.all or not any([args.generate, args.train, args.score])
 
     print("\n" + "="*60)
-    print("  ⚖️  NJDG Case Prioritization System")
+    print("  ⚖️  Backlog Triage Case")
     print("  Smart India Hackathon 2026 — git win")
     print("="*60)
 

@@ -22,7 +22,7 @@ DATA_DIR   = os.path.join(ROOT, "data")
 # PAGE CONFIG
 # ────────────────────────────────────────────
 st.set_page_config(
-    page_title="NJDG Case Prioritization",
+    page_title="Backlog Triage Case",
     page_icon="⚖️",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -134,7 +134,7 @@ def load_data():
 def render_header():
     col1, col2 = st.columns([5, 1])
     with col1:
-        st.markdown("# ⚖️ NJDG Case Prioritization System")
+        st.markdown("# ⚖️ Backlog Triage Case")
         st.markdown("**Smart India Hackathon 2026 — git win** | Hybrid Rule-Based + ML Engine for Explainable Case Prioritization")
     with col2:
         st.image("https://upload.wikimedia.org/wikipedia/commons/thumb/5/55/Emblem_of_India.svg/120px-Emblem_of_India.svg.png", width=80)
@@ -472,7 +472,7 @@ def main():
     # Footer
     st.divider()
     st.markdown(
-        "<center><small>⚖️ NJDG Case Prioritization System | Smart India Hackathon 2026 | <b>git win</b> | "
+        "<center><small>⚖️ Backlog Triage Case | Smart India Hackathon 2026 | <b>git win</b> | "
         "Bias-Resistant • Traceable • Explainable</small></center>",
         unsafe_allow_html=True,
     )
