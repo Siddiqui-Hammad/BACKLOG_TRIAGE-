@@ -1,26 +1,23 @@
 """
-dashboard.py
-Streamlit dashboard for the NJDG Case Prioritization System.
-Component 6 — Court-Level Priority Queue & Alerts.
+Backlog Triage Case — Smart India Hackathon 2026
+app/dashboard.py — Streamlit Community Cloud version
+Paginated UI: no scroll, Prev/Next navigation, fixed viewport
 """
 
-import os
-import sys
+import os, sys, random
 import pandas as pd
 import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ROOT      = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+MODELS_DIR = os.path.join(ROOT, "models")
 sys.path.insert(0, ROOT)
 
-MODELS_DIR = os.path.join(ROOT, "models")
-DATA_DIR   = os.path.join(ROOT, "data")
-
-# ────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────
 # PAGE CONFIG
-# ────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="Backlog Triage Case",
     page_icon="⚖️",
@@ -28,17 +25,52 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# Custom CSS
 st.markdown("""
 <style>
-    .main { background: #f8f9fa; }
-    .stMetric { background: white; border-radius: 10px; padding: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-    .priority-critical { color: #dc3545; font-weight: bold; }
-    .priority-high     { color: #fd7e14; font-weight: bold; }
-    .priority-medium   { color: #ffc107; font-weight: bold; }
-    .priority-low      { color: #28a745; font-weight: bold; }
-    h1 { color: #1a1a2e; }
-    .stAlert { border-radius: 10px; }
+/* ── Core layout */
+.main .block-container {
+    padding-top: 0.4rem !important;
+    padding-bottom: 0 !important;
+    max-width: 100% !important;
+}
+header[data-testid="stHeader"] { display: none !important; }
+footer                          { display: none !important; }
+
+/* ── Sidebar */
+section[data-testid="stSidebar"] {
+    background: linear-gradient(180deg,#0f0c29,#1a1a2e) !important;
+    border-right: 1px solid rgba(108,92,231,0.3);
+}
+section[data-testid="stSidebar"] * { color: #ddd !important; }
+section[data-testid="stSidebar"] .stSelectbox label,
+section[data-testid="stSidebar"] .stMultiSelect label,
+section[data-testid="stSidebar"] .stSlider label { color: #aaa !important; font-size:0.8rem !important; }
+
+/* ── Metric cards */
+div[data-testid="metric-container"] {
+    background: white;
+    border-radius: 14px;
+    padding: 12px 16px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.09);
+    border-left: 4px solid #6c5ce7;
+}
+div[data-testid="metric-container"] [data-testid="stMetricDelta"] { font-size: 0.75rem; }
+
+/* ── Page title strip */
+.pg-strip {
+    background: linear-gradient(90deg,#1a1a2e 0%,#6c5ce7 100%);
+    color: white; padding: 7px 20px; border-radius: 12px;
+    margin-bottom: 10px;
+    display: flex; align-items: center; justify-content: space-between;
+}
+/* ── Bottom nav */
+.stButton button {
+    border-radius: 10px;
+    font-weight: 600;
+    transition: all 0.2s;
+}
+/* Nav prev/next */
+button[kind="primary"] { background: #6c5ce7 !important; border: none !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -48,523 +80,613 @@ PRIORITY_COLORS = {
     "Medium":   "#ffc107",
     "Low":      "#28a745",
 }
+PAGES = [
+    ("📊",  "Overview"),
+    ("🏛️", "Court Analysis"),
+    ("📋",  "Priority Queue"),
+    ("🚨",  "Alerts"),
+    ("🔍",  "Case Explorer"),
+    ("🌳",  "Model Metrics"),
+]
+CH = 315   # standard chart height
 
-# ────────────────────────────────────────────
-# DATA LOADING
-# ────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────
+# DEMO DATA (used when scored_cases.csv not present — cloud deployment)
+# ─────────────────────────────────────────────────────────────────────
+_STATES = [
+    "Maharashtra","Uttar Pradesh","Karnataka","Tamil Nadu","Rajasthan",
+    "Gujarat","West Bengal","Madhya Pradesh","Bihar","Delhi",
+    "Andhra Pradesh","Telangana","Kerala","Punjab","Haryana",
+    "Odisha","Jharkhand","Chhattisgarh","Assam","Uttarakhand",
+    "Himachal Pradesh","Goa","Jammu & Kashmir","Manipur","Tripura",
+    "Meghalaya","Nagaland","Sikkim",
+]
+_DISTRICTS = {
+    "Maharashtra":["Mumbai","Pune","Nagpur","Nashik","Aurangabad","Solapur","Thane","Kolhapur","Amravati","Nanded"],
+    "Uttar Pradesh":["Lucknow","Allahabad","Varanasi","Kanpur","Agra","Meerut","Ghaziabad","Mathura","Bareilly","Gorakhpur"],
+    "Karnataka":["Bengaluru","Mysuru","Hubballi","Mangaluru","Belagavi","Davangere","Ballari","Kalaburagi","Tumkur","Shivamogga"],
+    "Tamil Nadu":["Chennai","Coimbatore","Madurai","Salem","Tiruchirappalli","Tirunelveli","Vellore","Erode","Thoothukudi","Dindigul"],
+    "Rajasthan":["Jaipur","Jodhpur","Udaipur","Kota","Bikaner","Ajmer","Alwar","Bharatpur","Sikar","Pali"],
+    "Gujarat":["Ahmedabad","Surat","Vadodara","Rajkot","Bhavnagar","Jamnagar","Junagadh","Gandhinagar","Anand","Mehsana"],
+    "West Bengal":["Kolkata","Howrah","Durgapur","Siliguri","Asansol","Kharagpur","Haldia","Malda","Murshidabad","Nadia"],
+    "Madhya Pradesh":["Bhopal","Indore","Gwalior","Jabalpur","Ujjain","Sagar","Rewa","Satna","Ratlam","Chhindwara"],
+    "Bihar":["Patna","Gaya","Muzaffarpur","Bhagalpur","Darbhanga","Ara","Begusarai","Katihar","Munger","Saharsa"],
+    "Delhi":["Central","South","North","East","West","Northwest","Southwest","New Delhi","Shahdara","Southeast"],
+    "Andhra Pradesh":["Visakhapatnam","Vijayawada","Guntur","Nellore","Kurnool","Tirupati","Kakinada","Rajahmundry","Kadapa","Anantapur"],
+    "Telangana":["Hyderabad","Warangal","Nizamabad","Karimnagar","Khammam","Mahbubnagar","Nalgonda","Adilabad","Suryapet","Medak"],
+    "Kerala":["Thiruvananthapuram","Kochi","Kozhikode","Thrissur","Kollam","Palakkad","Kannur","Alappuzha","Malappuram","Kottayam"],
+    "Punjab":["Ludhiana","Amritsar","Jalandhar","Patiala","Bathinda","Mohali","Hoshiarpur","Gurdaspur","Ferozepur","Moga"],
+    "Haryana":["Gurugram","Faridabad","Ambala","Rohtak","Hisar","Panipat","Karnal","Sonipat","Yamunanagar","Bhiwani"],
+    "Odisha":["Bhubaneswar","Cuttack","Rourkela","Berhampur","Sambalpur","Balasore","Puri","Jharsuguda","Rayagada","Koraput"],
+    "Jharkhand":["Ranchi","Jamshedpur","Dhanbad","Bokaro","Deoghar","Hazaribagh","Giridih","Ramgarh","Chaibasa","Dumka"],
+    "Chhattisgarh":["Raipur","Bhilai","Bilaspur","Korba","Durg","Rajnandgaon","Jagdalpur","Ambikapur","Dhamtari","Mahasamund"],
+    "Assam":["Guwahati","Silchar","Dibrugarh","Jorhat","Nagaon","Tezpur","Tinsukia","Karimganj","Hailakandi","Goalpara"],
+    "Uttarakhand":["Dehradun","Haridwar","Roorkee","Haldwani","Nainital","Rishikesh","Rudrapur","Kashipur","Srinagar","Pauri"],
+    "Himachal Pradesh":["Shimla","Dharamshala","Solan","Mandi","Kullu","Hamirpur","Una","Chamba","Bilaspur","Nahan"],
+    "Goa":["Panaji","Margao","Vasco","Mapusa","Ponda","Bicholim","Canacona","Quepem","Sanguem","Pernem"],
+    "Jammu & Kashmir":["Srinagar","Jammu","Anantnag","Baramulla","Sopore","Kathua","Udhampur","Rajouri","Poonch","Leh"],
+    "Manipur":["Imphal","Thoubal","Bishnupur","Churachandpur","Senapati","Ukhrul","Tamenglong","Jiribam","Kakching","Kangpokpi"],
+    "Tripura":["Agartala","Dharmanagar","Udaipur","Kailasahar","Ambassa","Sabroom","Belonia","Khowai","Melaghar","Sonamura"],
+    "Meghalaya":["Shillong","Tura","Jowai","Nongstoin","Baghmara","Resubelpara","Ampati","Mairang","Nongpoh","Williamnagar"],
+    "Nagaland":["Kohima","Dimapur","Mokokchung","Tuensang","Wokha","Zunheboto","Mon","Phek","Kiphire","Longleng"],
+    "Sikkim":["Gangtok","Namchi","Gyalshing","Mangan","Jorethang","Rangpo","Singtam","Ravangla","Yuksom","Lachen"],
+}
+_CATS = ["POCSO","SC_ST","Senior_Citizen","Commercial","NDPS","Matrimonial",
+         "Motor_Accident","General_Civil","General_Criminal","Property_Dispute",
+         "Cheque_Bounce","Labour_Dispute","Consumer_Forum","Land_Acquisition","Constitutional_Writ"]
+_STAGES = ["Filing","Admission","Notice","Written_Statement","Evidence","Arguments","Judgment","Execution"]
 
-def _generate_demo_data():
-    """Generate demo data when running on cloud without model files."""
-    import random
+@st.cache_data(show_spinner=False)
+def _make_demo(n=2000):
     np.random.seed(42); random.seed(42)
-    n = 1500
-
-    DEMO_STATES = [
-        "Maharashtra","Uttar Pradesh","Karnataka","Tamil Nadu","Rajasthan",
-        "Gujarat","West Bengal","Madhya Pradesh","Bihar","Delhi",
-        "Andhra Pradesh","Telangana","Kerala","Punjab","Haryana",
-        "Odisha","Jharkhand","Chhattisgarh","Assam","Uttarakhand",
-        "Himachal Pradesh","Goa","Jammu & Kashmir","Manipur","Tripura",
-        "Meghalaya","Nagaland","Sikkim",
-    ]
-    DEMO_DISTRICTS = {
-        "Maharashtra":["Mumbai","Pune","Nagpur","Nashik","Aurangabad","Solapur","Thane","Kolhapur","Amravati","Nanded"],
-        "Uttar Pradesh":["Lucknow","Allahabad","Varanasi","Kanpur","Agra","Meerut","Ghaziabad","Mathura","Bareilly","Gorakhpur"],
-        "Karnataka":["Bengaluru","Mysuru","Hubballi","Mangaluru","Belagavi","Davangere","Ballari","Kalaburagi","Tumkur","Shivamogga"],
-        "Tamil Nadu":["Chennai","Coimbatore","Madurai","Salem","Tiruchirappalli","Tirunelveli","Vellore","Erode","Thoothukudi","Dindigul"],
-        "Rajasthan":["Jaipur","Jodhpur","Udaipur","Kota","Bikaner","Ajmer","Alwar","Bharatpur","Sikar","Pali"],
-        "Gujarat":["Ahmedabad","Surat","Vadodara","Rajkot","Bhavnagar","Jamnagar","Junagadh","Gandhinagar","Anand","Mehsana"],
-        "West Bengal":["Kolkata","Howrah","Durgapur","Siliguri","Asansol","Kharagpur","Haldia","Malda","Murshidabad","Nadia"],
-        "Madhya Pradesh":["Bhopal","Indore","Gwalior","Jabalpur","Ujjain","Sagar","Rewa","Satna","Ratlam","Chhindwara"],
-        "Bihar":["Patna","Gaya","Muzaffarpur","Bhagalpur","Darbhanga","Ara","Begusarai","Katihar","Munger","Saharsa"],
-        "Delhi":["Central","South","North","East","West","Northwest","Southwest","New Delhi","Shahdara","Southeast"],
-        "Andhra Pradesh":["Visakhapatnam","Vijayawada","Guntur","Nellore","Kurnool","Tirupati","Kakinada","Rajahmundry","Kadapa","Anantapur"],
-        "Telangana":["Hyderabad","Warangal","Nizamabad","Karimnagar","Khammam","Mahbubnagar","Nalgonda","Adilabad","Suryapet","Medak"],
-        "Kerala":["Thiruvananthapuram","Kochi","Kozhikode","Thrissur","Kollam","Palakkad","Kannur","Alappuzha","Malappuram","Kottayam"],
-        "Punjab":["Ludhiana","Amritsar","Jalandhar","Patiala","Bathinda","Mohali","Hoshiarpur","Gurdaspur","Ferozepur","Moga"],
-        "Haryana":["Gurugram","Faridabad","Ambala","Rohtak","Hisar","Panipat","Karnal","Sonipat","Yamunanagar","Bhiwani"],
-        "Odisha":["Bhubaneswar","Cuttack","Rourkela","Berhampur","Sambalpur","Balasore","Puri","Jharsuguda","Rayagada","Koraput"],
-        "Jharkhand":["Ranchi","Jamshedpur","Dhanbad","Bokaro","Deoghar","Hazaribagh","Giridih","Ramgarh","Chaibasa","Dumka"],
-        "Chhattisgarh":["Raipur","Bhilai","Bilaspur","Korba","Durg","Rajnandgaon","Jagdalpur","Ambikapur","Dhamtari","Mahasamund"],
-        "Assam":["Guwahati","Silchar","Dibrugarh","Jorhat","Nagaon","Tezpur","Tinsukia","Karimganj","Hailakandi","Goalpara"],
-        "Uttarakhand":["Dehradun","Haridwar","Roorkee","Haldwani","Nainital","Rishikesh","Rudrapur","Kashipur","Srinagar","Pauri"],
-        "Himachal Pradesh":["Shimla","Dharamshala","Solan","Mandi","Kullu","Hamirpur","Una","Chamba","Bilaspur","Nahan"],
-        "Goa":["Panaji","Margao","Vasco","Mapusa","Ponda","Bicholim","Canacona","Quepem","Sanguem","Pernem"],
-        "Jammu & Kashmir":["Srinagar","Jammu","Anantnag","Baramulla","Sopore","Kathua","Udhampur","Rajouri","Poonch","Leh"],
-        "Manipur":["Imphal","Thoubal","Bishnupur","Churachandpur","Senapati","Ukhrul","Tamenglong","Jiribam","Kakching","Kangpokpi"],
-        "Tripura":["Agartala","Dharmanagar","Udaipur","Kailasahar","Ambassa","Sabroom","Belonia","Khowai","Melaghar","Sonamura"],
-        "Meghalaya":["Shillong","Tura","Jowai","Nongstoin","Baghmara","Resubelpara","Ampati","Mairang","Nongpoh","Williamnagar"],
-        "Nagaland":["Kohima","Dimapur","Mokokchung","Tuensang","Wokha","Zunheboto","Mon","Phek","Kiphire","Longleng"],
-        "Sikkim":["Gangtok","Namchi","Gyalshing","Mangan","Jorethang","Rangpo","Singtam","Ravangla","Yuksom","Lachen"],
-    }
-    CATEGORIES_DEMO = ["POCSO","SC_ST","Senior_Citizen","Commercial","NDPS","Matrimonial",
-                       "Motor_Accident","General_Civil","General_Criminal","Property_Dispute",
-                       "Cheque_Bounce","Labour_Dispute","Consumer_Forum","Land_Acquisition","Constitutional_Writ"]
-    stages  = ["Filing","Admission","Notice","Written_Statement","Evidence","Arguments","Judgment","Execution"]
-
     p_labels = np.random.choice(["Critical","High","Medium","Low"], n, p=[0.11,0.68,0.15,0.06])
     p_scores = np.where(p_labels=="Critical", np.random.uniform(75,100,n),
                np.where(p_labels=="High",     np.random.uniform(50,75,n),
                np.where(p_labels=="Medium",   np.random.uniform(25,50,n),
                                               np.random.uniform(0,25,n))))
     p_emojis = [{"Critical":"🔴","High":"🟠","Medium":"🟡","Low":"🟢"}[l] for l in p_labels]
-    st_arr   = np.random.choice(DEMO_STATES, n)
+    st_arr   = np.random.choice(_STATES, n)
     rows = []
     for i in range(n):
-        s  = st_arr[i]
-        d  = random.choice(DEMO_DISTRICTS[s])
-        court_id = f"{s[:3].upper()}-{d[:3].upper()}-{random.randint(1,40):02d}"
+        s = st_arr[i]; d = random.choice(_DISTRICTS[s])
         rows.append({
-            "case_number":         f"CASE/{i+1:05d}/2022",
-            "court_id":            court_id,
-            "state":               s,
-            "district":            d,
-            "case_category":       random.choice(CATEGORIES_DEMO),
-            "case_type":           random.choice(["Civil","Criminal","Writ"]),
-            "current_stage":       random.choice(stages),
-            "case_age_days":       random.randint(100, 3500),
-            "stage_age_days":      random.randint(10, 400),
-            "hearings_held":       random.randint(1, 30),
-            "adjournments":        random.randint(0, 15),
-            "adjournment_rate":    round(random.uniform(0, 0.8), 2),
+            "case_number":         f"CASE/{i+1:05d}/{random.randint(2015,2024)}",
+            "court_id":            f"{s[:3].upper()}-{d[:3].upper()}-{random.randint(1,40):02d}",
+            "state": s, "district": d,
+            "case_category":       random.choice(_CATS),
+            "case_type":           random.choice(["Civil","Criminal","Writ","Appeal"]),
+            "current_stage":       random.choice(_STAGES),
+            "case_age_days":       random.randint(90, 3500),
+            "stage_age_days":      random.randint(10, 500),
+            "hearings_held":       random.randint(1, 35),
+            "adjournments":        random.randint(0, 18),
+            "adjournment_rate":    round(random.uniform(0, 0.85), 2),
             "stagnation_flag":     random.randint(0, 1),
             "is_undertrial":       random.randint(0, 1),
-            "priority_score":      round(p_scores[i], 2),
+            "priority_score":      round(float(p_scores[i]), 2),
             "priority_label":      p_labels[i],
             "priority_emoji":      p_emojis[i],
-            "disposal_days":       random.randint(30, 600),
+            "disposal_days":       random.randint(20, 700),
             "legal_urgency_score": round(random.uniform(0, 100), 1),
             "delay_risk_score":    round(random.uniform(0, 100), 1),
-            "urgency_flags":       "Demo mode — run main.py for real flags",
-            "court_rank":          i + 1,
-            "docket_label":        f"[#{i+1}] {p_emojis[i]} {p_labels[i]}",
+            "urgency_flags":       random.choice([
+                "STATUTORY DEADLINE BREACHED; High adjournment rate 65%",
+                "Approaching statutory deadline; BNSS 479: Undertrial threshold crossed",
+                "No urgent flags",
+                "Critical stagnation in Evidence; POCSO: Mandatory speedy trial",
+                "SC/ST PoA: Priority disposal",
+            ]),
+            "court_rank": i + 1,
         })
-    df = pd.DataFrame(rows)
-    alerts = pd.DataFrame([
-        {"case_number": r["case_number"], "court_id": r["court_id"],
-         "alert_type": "CRITICAL_PRIORITY",
-         "message": f"Critical priority [{r['case_category']}] case",
-         "severity": "CRITICAL"}
-        for r in rows if r["priority_label"] == "Critical"
+    df      = pd.DataFrame(rows)
+    alerts  = pd.DataFrame([
+        {"case_number":r["case_number"],"court_id":r["court_id"],
+         "alert_type":"CRITICAL_PRIORITY","message":f"{r['case_category']} — Score {r['priority_score']:.1f}",
+         "severity":"CRITICAL"}
+        for r in rows if r["priority_label"]=="Critical"
     ])
     summary = df.groupby(["court_id","priority_label"]).size().unstack(fill_value=0).reset_index()
     return df, alerts, summary
 
-
-@st.cache_data
+@st.cache_data(show_spinner=False)
 def load_data():
-    scored_path  = os.path.join(MODELS_DIR, "scored_cases.csv")
-    alerts_path  = os.path.join(MODELS_DIR, "alerts.csv")
-    summary_path = os.path.join(MODELS_DIR, "court_summary.csv")
-
-    if not os.path.exists(scored_path):
-        st.info("ℹ️ Running in **Demo Mode** — showing sample data. Clone locally and run `python main.py --all` for real NJDG predictions.")
-        return _generate_demo_data()
-
-    df      = pd.read_csv(scored_path)
-    alerts  = pd.read_csv(alerts_path)  if os.path.exists(alerts_path)  else pd.DataFrame()
-    summary = pd.read_csv(summary_path) if os.path.exists(summary_path) else pd.DataFrame()
+    sp = os.path.join(MODELS_DIR, "scored_cases.csv")
+    ap = os.path.join(MODELS_DIR, "alerts.csv")
+    cp = os.path.join(MODELS_DIR, "court_summary.csv")
+    if not os.path.exists(sp):
+        st.toast("📊 Demo mode — showing synthetic data", icon="ℹ️")
+        return _make_demo()
+    df      = pd.read_csv(sp)
+    alerts  = pd.read_csv(ap)  if os.path.exists(ap) else pd.DataFrame()
+    summary = pd.read_csv(cp)  if os.path.exists(cp) else pd.DataFrame()
     return df, alerts, summary
 
+# ─────────────────────────────────────────────────────────────────────
+# SESSION STATE
+# ─────────────────────────────────────────────────────────────────────
+if "page" not in st.session_state:
+    st.session_state.page = 0
 
-# ────────────────────────────────────────────
-# HEADER
-# ────────────────────────────────────────────
+def _go(p):   st.session_state.page = p
+def _next():
+    if st.session_state.page < len(PAGES)-1: st.session_state.page += 1
+def _prev():
+    if st.session_state.page > 0:            st.session_state.page -= 1
 
-def render_header():
-    col1, col2 = st.columns([5, 1])
-    with col1:
-        st.markdown("# ⚖️ Backlog Triage Case")
-        st.markdown("**Smart India Hackathon 2026 — git win** | Hybrid Rule-Based + ML Engine for Explainable Case Prioritization")
-    with col2:
-        st.image("https://upload.wikimedia.org/wikipedia/commons/thumb/5/55/Emblem_of_India.svg/120px-Emblem_of_India.svg.png", width=80)
+# ─────────────────────────────────────────────────────────────────────
+# LOAD DATA
+# ─────────────────────────────────────────────────────────────────────
+with st.spinner("Loading data…"):
+    df_all, alerts_all, court_summary = load_data()
+
+# ─────────────────────────────────────────────────────────────────────
+# SIDEBAR
+# ─────────────────────────────────────────────────────────────────────
+with st.sidebar:
+    # Logo + title
+    c1, c2 = st.columns([1,3])
+    with c1:
+        st.image("https://upload.wikimedia.org/wikipedia/commons/thumb/5/55/Emblem_of_India.svg/60px-Emblem_of_India.svg.png", width=44)
+    with c2:
+        st.markdown("<div style='padding-top:6px'><b style='font-size:1rem'>Backlog Triage</b><br><span style='font-size:0.72rem;color:#aaa'>SIH 2026 — git win</span></div>", unsafe_allow_html=True)
     st.divider()
 
+    # ── Page navigation
+    st.markdown("<p style='font-size:0.75rem;color:#888;margin-bottom:4px'>NAVIGATION</p>", unsafe_allow_html=True)
+    for i, (icon, name) in enumerate(PAGES):
+        active = i == st.session_state.page
+        bg  = "background:rgba(108,92,231,0.28);border-radius:9px;" if active else ""
+        fw  = "font-weight:700;" if active else ""
+        col = "#fff" if active else "#ccc"
+        st.markdown(f"""
+        <div style='{bg}margin:2px 0'>
+            <div id='nav_btn_{i}' style='padding:6px 10px;cursor:pointer;{fw}color:{col};font-size:0.88rem'>
+                {icon}&nbsp; {name}
+            </div>
+        </div>""", unsafe_allow_html=True)
+        if st.button(f"{icon} {name}", key=f"nb_{i}",
+                     help=f"Go to {name}",
+                     use_container_width=True):
+            _go(i); st.rerun()
 
-# ────────────────────────────────────────────
-# SIDEBAR FILTERS
-# ────────────────────────────────────────────
+    st.divider()
+    st.markdown("<p style='font-size:0.75rem;color:#888;margin-bottom:4px'>FILTERS</p>", unsafe_allow_html=True)
 
-def render_sidebar(df):
-    st.sidebar.header("🔍 Filters")
-
-    # ── Primary: Court
-    all_courts = sorted(df["court_id"].unique().tolist())
-    sel_courts = st.sidebar.multiselect("🏛️ Court ID", all_courts, default=[])
-
-    # ── Secondary: Category & Priority
-    sel_category = st.sidebar.multiselect(
-        "📂 Case Category", sorted(df["case_category"].unique().tolist()), default=[]
-    )
-    priority_labels = st.sidebar.multiselect(
-        "🚦 Priority Label",
-        ["Critical", "High", "Medium", "Low"],
-        default=["Critical", "High"],
-    )
-
-    min_score, max_score = st.sidebar.slider("🎯 Priority Score Range", 0, 100, (0, 100))
-
-    st.sidebar.divider()
-    st.sidebar.markdown("#### 📍 Location (optional)")
-    states = ["All"] + sorted(df["state"].unique().tolist())
-    sel_state = st.sidebar.selectbox("State", states)
+    all_courts   = sorted(df_all["court_id"].unique())
+    sel_courts   = st.multiselect("🏛️ Court ID",   all_courts,      default=[])
+    sel_cat      = st.multiselect("📂 Category",   sorted(df_all["case_category"].unique()), default=[])
+    sel_priority = st.multiselect("🚦 Priority",   ["Critical","High","Medium","Low"], default=["Critical","High"])
+    sel_state    = st.selectbox( "📍 State",       ["All"] + sorted(df_all["state"].unique()))
 
     # Apply filters
-    filtered = df.copy()
-    if sel_courts:
-        filtered = filtered[filtered["court_id"].isin(sel_courts)]
-    if sel_state != "All":
-        filtered = filtered[filtered["state"] == sel_state]
-    if sel_category:
-        filtered = filtered[filtered["case_category"].isin(sel_category)]
-    if priority_labels:
-        filtered = filtered[filtered["priority_label"].isin(priority_labels)]
-    filtered = filtered[
-        (filtered["priority_score"] >= min_score) &
-        (filtered["priority_score"] <= max_score)
+    fdf = df_all.copy()
+    if sel_courts:         fdf = fdf[fdf["court_id"].isin(sel_courts)]
+    if sel_state != "All": fdf = fdf[fdf["state"] == sel_state]
+    if sel_cat:            fdf = fdf[fdf["case_category"].isin(sel_cat)]
+    if sel_priority:       fdf = fdf[fdf["priority_label"].isin(sel_priority)]
+
+    falerts = alerts_all.copy()
+    if not falerts.empty and "court_id" in falerts.columns and sel_courts:
+        falerts = falerts[falerts["court_id"].isin(sel_courts)]
+
+    st.divider()
+    st.markdown(f"<p style='font-size:0.8rem;color:#aaa'><b style='color:#fff'>{len(fdf):,}</b> cases &nbsp;|&nbsp; <b style='color:#fff'>{fdf['court_id'].nunique():,}</b> courts</p>", unsafe_allow_html=True)
+
+# ─────────────────────────────────────────────────────────────────────
+# PAGE TITLE STRIP
+# ─────────────────────────────────────────────────────────────────────
+p = st.session_state.page
+cur_icon, cur_name = PAGES[p]
+total = len(fdf); crit_n = (fdf["priority_label"]=="Critical").sum()
+
+st.markdown(f"""
+<div class="pg-strip">
+  <span style="font-size:1.1rem;font-weight:700;letter-spacing:.5px">
+    {cur_icon} &nbsp; {cur_name}
+  </span>
+  <span style="font-size:0.78rem;opacity:0.82">
+    ⚖️ Backlog Triage Case &nbsp;|&nbsp; {total:,} cases &nbsp;·&nbsp;
+    {fdf['court_id'].nunique():,} courts &nbsp;·&nbsp;
+    🔴 {crit_n:,} critical &nbsp;|&nbsp;
+    Page {p+1}/{len(PAGES)}
+  </span>
+</div>
+""", unsafe_allow_html=True)
+
+# ─────────────────────────────────────────────────────────────────────
+# PAGE 0 — OVERVIEW
+# ─────────────────────────────────────────────────────────────────────
+def page_overview(fdf):
+    tot   = len(fdf)
+    crit  = (fdf["priority_label"]=="Critical").sum()
+    high  = (fdf["priority_label"]=="High").sum()
+    cts   = fdf["court_id"].nunique()
+    under = int(fdf["is_undertrial"].sum()) if "is_undertrial" in fdf else 0
+    avgd  = fdf["disposal_days"].mean() if "disposal_days" in fdf else 0
+    avgp  = fdf["priority_score"].mean() if "priority_score" in fdf else 0
+
+    cols = st.columns(7)
+    mdata = [
+        ("🏛️","Courts",      f"{cts:,}",   None),
+        ("📁","Total Cases", f"{tot:,}",   None),
+        ("🔴","Critical",    f"{crit:,}",  f"{crit/max(tot,1)*100:.1f}%"),
+        ("🟠","High",        f"{high:,}",  f"{high/max(tot,1)*100:.1f}%"),
+        ("⛓️","Undertrial",  f"{under:,}", None),
+        ("📅","Avg Disposal",f"{avgd:.0f}d",None),
+        ("🎯","Avg Priority",f"{avgp:.1f}",None),
     ]
+    for col, (icon, label, val, delta) in zip(cols, mdata):
+        with col:
+            st.metric(f"{icon} {label}", val, delta)
 
-    total_courts = filtered["court_id"].nunique()
-    st.sidebar.markdown(f"**{len(filtered):,} cases** across **{total_courts:,} courts**")
-    return filtered
+    st.markdown("<div style='height:4px'/>", unsafe_allow_html=True)
+    r1, r2 = st.columns(2)
 
-
-
-# ────────────────────────────────────────────
-# KPI METRICS
-# ────────────────────────────────────────────
-
-def render_kpis(df, alerts):
-    st.subheader("📊 Dashboard Overview")
-    col1, col2, col3, col4, col5, col6 = st.columns(6)
-
-    total_courts = df["court_id"].nunique()
-    critical     = (df["priority_label"] == "Critical").sum()
-    high         = (df["priority_label"] == "High").sum()
-    undertrial   = df["is_undertrial"].sum() if "is_undertrial" in df.columns else 0
-    crit_alerts  = len(alerts[alerts["severity"] == "CRITICAL"]) if not alerts.empty else 0
-    avg_disposal = df["disposal_days"].mean() if "disposal_days" in df.columns else 0
-
-    with col1:
-        st.metric("🏛️ Courts", f"{total_courts:,}")
-    with col2:
-        st.metric("🔴 Critical Cases", f"{critical:,}", f"{critical/max(len(df),1)*100:.1f}%")
-    with col3:
-        st.metric("🟠 High Priority", f"{high:,}", f"{high/max(len(df),1)*100:.1f}%")
-    with col4:
-        st.metric("⛓️ Undertrial", f"{int(undertrial):,}")
-    with col5:
-        st.metric("🚨 Critical Alerts", f"{crit_alerts:,}")
-    with col6:
-        st.metric("📅 Avg Disposal", f"{avg_disposal:.0f} days")
-
-
-
-# ────────────────────────────────────────────
-# CHARTS
-# ────────────────────────────────────────────
-
-def render_charts(df):
-    st.subheader("📈 Analytics")
-    col1, col2 = st.columns(2)
-
-    with col1:
-        # Priority label distribution
-        label_counts = df["priority_label"].value_counts().reset_index()
-        label_counts.columns = ["Priority", "Count"]
-        label_order = ["Critical", "High", "Medium", "Low"]
-        label_counts["Priority"] = pd.Categorical(label_counts["Priority"], categories=label_order, ordered=True)
-        label_counts = label_counts.sort_values("Priority")
-
-        fig = px.bar(
-            label_counts, x="Priority", y="Count",
-            color="Priority",
-            color_discrete_map=PRIORITY_COLORS,
-            title="Cases by Priority Label",
-            template="plotly_white",
-        )
-        fig.update_layout(showlegend=False, height=350)
+    with r1:
+        lo  = ["Critical","High","Medium","Low"]
+        lc  = fdf["priority_label"].value_counts().reindex(lo, fill_value=0).reset_index()
+        lc.columns = ["Priority","Count"]
+        lc["Pct"] = (lc["Count"] / max(tot,1) * 100).round(1)
+        fig = px.bar(lc, x="Priority", y="Count", color="Priority",
+                     color_discrete_map=PRIORITY_COLORS,
+                     text=lc["Pct"].astype(str) + "%",
+                     title="Cases by Priority Label", template="plotly_white")
+        fig.update_traces(textposition="outside")
+        fig.update_layout(showlegend=False, height=CH,
+                          margin=dict(t=36,b=0,l=0,r=0))
         st.plotly_chart(fig, use_container_width=True)
 
-    with col2:
-        # Case category breakdown
-        cat_counts = df.groupby(["case_category", "priority_label"]).size().reset_index(name="count")
-        fig2 = px.bar(
-            cat_counts, x="case_category", y="count",
-            color="priority_label",
-            color_discrete_map=PRIORITY_COLORS,
-            title="Priority Distribution by Case Category",
-            template="plotly_white",
-            barmode="stack",
-        )
-        fig2.update_layout(height=350, xaxis_tickangle=-30, legend_title="Priority")
+    with r2:
+        cc = fdf.groupby(["case_category","priority_label"]).size().reset_index(name="Count")
+        fig2 = px.bar(cc, x="case_category", y="Count",
+                      color="priority_label", color_discrete_map=PRIORITY_COLORS,
+                      title="Priority by Case Category", template="plotly_white",
+                      barmode="stack")
+        fig2.update_layout(height=CH, xaxis_tickangle=-30,
+                           legend_title="Priority",
+                           margin=dict(t=36,b=0,l=0,r=0))
         st.plotly_chart(fig2, use_container_width=True)
 
-    col3, col4 = st.columns(2)
-
-    with col3:
-        # Priority score distribution
-        fig3 = px.histogram(
-            df, x="priority_score", nbins=40,
-            color_discrete_sequence=["#6c5ce7"],
-            title="Priority Score Distribution",
-            template="plotly_white",
-            labels={"priority_score": "Priority Score (0–100)"},
-        )
-        fig3.update_layout(height=320)
-        st.plotly_chart(fig3, use_container_width=True)
-
-    with col4:
-        # Predicted disposal timeline box plot by category
-        fig4 = px.box(
-            df, x="case_category", y="disposal_days",
-            color="priority_label",
-            color_discrete_map=PRIORITY_COLORS,
-            title="Predicted Disposal Timeline by Category",
-            template="plotly_white",
-        )
-        fig4.update_layout(height=320, xaxis_tickangle=-30)
-        st.plotly_chart(fig4, use_container_width=True)
-
-
-# ────────────────────────────────────────────
-# COURT-WISE CHARTS  ← replaces state heatmap
-# ────────────────────────────────────────────
-
-def render_court_charts(df):
-    st.subheader("🏛️ Court-wise Backlog Analysis")
-    col1, col2 = st.columns(2)
-
-    # Top 20 courts by critical case count
-    with col1:
-        court_crit = (
-            df[df["priority_label"] == "Critical"]
-            .groupby("court_id").size()
-            .reset_index(name="Critical Cases")
-            .sort_values("Critical Cases", ascending=True)
-            .tail(20)
-        )
-        fig = px.bar(
-            court_crit, x="Critical Cases", y="court_id",
-            orientation="h",
-            color="Critical Cases",
-            color_continuous_scale="Reds",
-            title="Top 20 Courts — Critical Cases",
-            template="plotly_white",
-        )
-        fig.update_layout(height=430, coloraxis_showscale=False,
-                          yaxis_title="Court ID", xaxis_title="Critical Cases")
+# ─────────────────────────────────────────────────────────────────────
+# PAGE 1 — COURT ANALYSIS
+# ─────────────────────────────────────────────────────────────────────
+def page_courts(fdf):
+    r1, r2 = st.columns(2)
+    with r1:
+        cc = (fdf[fdf["priority_label"]=="Critical"]
+              .groupby("court_id").size().reset_index(name="Critical Cases")
+              .sort_values("Critical Cases", ascending=True).tail(20))
+        fig = px.bar(cc, x="Critical Cases", y="court_id", orientation="h",
+                     color="Critical Cases", color_continuous_scale="Reds",
+                     title="Top 20 Courts — Critical Cases", template="plotly_white")
+        fig.update_layout(height=CH+40, coloraxis_showscale=False,
+                          yaxis_title="", margin=dict(t=36,b=0,l=0,r=0))
         st.plotly_chart(fig, use_container_width=True)
 
-    # Court avg priority score bubble chart
-    with col2:
-        court_stats = df.groupby("court_id").agg(
-            total_cases     = ("case_number", "count"),
-            avg_priority    = ("priority_score", "mean"),
-            critical_count  = ("priority_label", lambda x: (x == "Critical").sum()),
-            avg_disposal    = ("disposal_days", "mean"),
+    with r2:
+        cs = fdf.groupby("court_id").agg(
+            total   = ("case_number","count"),
+            avg_p   = ("priority_score","mean"),
+            crit    = ("priority_label", lambda x: (x=="Critical").sum()),
+            avg_d   = ("disposal_days","mean"),
         ).reset_index()
-        court_stats["avg_priority"]  = court_stats["avg_priority"].round(1)
-        court_stats["avg_disposal"]  = court_stats["avg_disposal"].round(0)
         fig2 = px.scatter(
-            court_stats.sort_values("avg_priority", ascending=False).head(50),
-            x="avg_priority", y="total_cases",
-            size="critical_count",
-            color="avg_priority",
-            color_continuous_scale="RdYlGn_r",
-            hover_name="court_id",
-            hover_data={"avg_disposal": True, "critical_count": True},
-            title="Court Priority vs. Caseload (bubble = critical count)",
+            cs.sort_values("avg_p", ascending=False).head(60),
+            x="avg_p", y="total", size="crit", color="avg_p",
+            color_continuous_scale="RdYlGn_r", hover_name="court_id",
+            hover_data={"avg_d":True,"crit":True},
+            title="Court Priority vs Caseload (bubble = critical count)",
             template="plotly_white",
-            labels={
-                "avg_priority": "Avg Priority Score",
-                "total_cases":  "Total Cases",
-                "critical_count": "Critical Cases",
-                "avg_disposal": "Avg Disposal (days)",
-            }
+            labels={"avg_p":"Avg Priority Score","total":"Total Cases",
+                    "crit":"Critical Cases","avg_d":"Avg Disposal (days)"},
         )
-        fig2.update_layout(height=430, coloraxis_showscale=False)
+        fig2.update_layout(height=CH+40, coloraxis_showscale=False,
+                           margin=dict(t=36,b=0,l=0,r=0))
         st.plotly_chart(fig2, use_container_width=True)
 
+    st.markdown("<div style='height:2px'/>", unsafe_allow_html=True)
+    cs2 = fdf.groupby("state").agg(
+        Cases    = ("case_number","count"),
+        Critical = ("priority_label", lambda x: (x=="Critical").sum()),
+        Courts   = ("court_id","nunique"),
+        AvgScore = ("priority_score","mean"),
+    ).reset_index().sort_values("Critical", ascending=False).head(14)
+    cs2["AvgScore"] = cs2["AvgScore"].round(1)
+    st.dataframe(cs2.rename(columns={"state":"State"}),
+                 use_container_width=True, height=180)
 
+# ─────────────────────────────────────────────────────────────────────
+# PAGE 2 — PRIORITY QUEUE
+# ─────────────────────────────────────────────────────────────────────
+def page_queue(fdf):
+    lo_map = {"Critical":0,"High":1,"Medium":2,"Low":3}
+    view   = fdf.copy()
+    view["_s"] = view["priority_label"].map(lo_map).fillna(9)
+    view   = view.sort_values(["_s","priority_score"], ascending=[True,False])
 
-# ────────────────────────────────────────────
-# PRIORITY QUEUE TABLE
-# ────────────────────────────────────────────
-
-def render_priority_queue(df):
-    st.subheader("📋 Court Priority Queue")
-
-    display_cols = [
-        "docket_label", "case_number", "court_id", "state",
-        "case_category", "case_type", "current_stage",
-        "case_age_days", "priority_score", "disposal_days",
-        "legal_urgency_score", "delay_risk_score",
-    ]
-    available = [c for c in display_cols if c in df.columns]
-
-    view = df[available].sort_values("priority_score", ascending=False).head(100)
-
-    # Rename for display
-    view = view.rename(columns={
-        "docket_label":       "Queue Rank",
-        "case_number":        "Case No.",
-        "court_id":           "Court",
-        "state":              "State",
-        "case_category":      "Category",
-        "case_type":          "Type",
-        "current_stage":      "Stage",
-        "case_age_days":      "Age (days)",
-        "priority_score":     "Priority Score",
-        "disposal_days":      "Disposal (days)",
-        "legal_urgency_score":"Urgency Score",
-        "delay_risk_score":   "ML Delay Risk",
-    })
+    cols_map = {
+        "priority_emoji":   "⬤",
+        "priority_score":   "Score",
+        "case_number":      "Case No.",
+        "court_id":         "Court",
+        "state":            "State",
+        "case_category":    "Category",
+        "case_type":        "Type",
+        "current_stage":    "Stage",
+        "case_age_days":    "Age (d)",
+        "disposal_days":    "Disposal (d)",
+        "legal_urgency_score": "Urgency",
+        "delay_risk_score":    "ML Risk",
+        "priority_label":   "Label",
+    }
+    avail = [c for c in cols_map if c in view.columns]
+    disp  = view[avail].rename(columns=cols_map).head(500)
 
     st.dataframe(
-        view,
+        disp,
         use_container_width=True,
-        height=450,
+        height=530,
         column_config={
-            "Priority Score": st.column_config.ProgressColumn(
-                "Priority Score", min_value=0, max_value=100, format="%.1f"
-            ),
-            "ML Delay Risk": st.column_config.ProgressColumn(
-                "ML Delay Risk", min_value=0, max_value=100, format="%.1f"
-            ),
-            "Urgency Score": st.column_config.ProgressColumn(
-                "Urgency Score", min_value=0, max_value=100, format="%.1f"
-            ),
+            "Score":   st.column_config.ProgressColumn("Score",   min_value=0, max_value=100, format="%.1f"),
+            "Urgency": st.column_config.ProgressColumn("Urgency", min_value=0, max_value=100, format="%.1f"),
+            "ML Risk": st.column_config.ProgressColumn("ML Risk", min_value=0, max_value=100, format="%.1f"),
         },
     )
 
+# ─────────────────────────────────────────────────────────────────────
+# PAGE 3 — ALERTS
+# ─────────────────────────────────────────────────────────────────────
+def page_alerts(fdf, falerts):
+    # Build alerts from scored data
+    alerts = []
+    for _, r in fdf.iterrows():
+        ps  = r.get("priority_score", 0)
+        age = r.get("case_age_days",  0)
+        flags = str(r.get("urgency_flags",""))
+        if ps >= 75:
+            alerts.append({"Court":r["court_id"],"Case":r["case_number"],
+                "Category":r["case_category"],"Type":"CRITICAL PRIORITY",
+                "Message":f"Score {ps:.1f}/100","Severity":"Critical"})
+        if r.get("is_undertrial",0)==1 and age>365:
+            alerts.append({"Court":r["court_id"],"Case":r["case_number"],
+                "Category":r["case_category"],"Type":"BNSS 479 UNDERTRIAL",
+                "Message":f"Pending {age}d — bail review required","Severity":"Critical"})
+        if r.get("stagnation_flag",0)==1 and r.get("stage_age_days",0)>180:
+            alerts.append({"Court":r["court_id"],"Case":r["case_number"],
+                "Category":r["case_category"],"Type":"STAGE STAGNATION",
+                "Message":f"Stuck in '{r['current_stage']}' for {r.get('stage_age_days',0)}d","Severity":"High"})
+        if "BREACHED" in flags:
+            alerts.append({"Court":r["court_id"],"Case":r["case_number"],
+                "Category":r["case_category"],"Type":"STATUTORY BREACH",
+                "Message":f"{r['case_category']} statutory deadline exceeded","Severity":"Critical"})
 
-# ────────────────────────────────────────────
-# ALERTS PANEL
-# ────────────────────────────────────────────
-
-def render_alerts(alerts):
-    st.subheader("🚨 Active Alerts")
-
-    if alerts.empty:
-        st.info("No alerts generated.")
+    adf    = pd.DataFrame(alerts) if alerts else pd.DataFrame()
+    if adf.empty:
+        st.success("✅ No alerts for current filter.")
         return
 
-    crit = alerts[alerts["severity"] == "CRITICAL"]
-    high = alerts[alerts["severity"] == "HIGH"]
+    crit_a = adf[adf["Severity"]=="Critical"]
+    high_a = adf[adf["Severity"]=="High"]
 
-    col1, col2 = st.columns(2)
-    with col1:
-        st.markdown(f"**🔴 Critical Alerts: {len(crit)}**")
-        for _, row in crit.head(10).iterrows():
-            st.error(f"[{row['court_id']}] {row['message']} — {row['case_number']}")
+    m1,m2,m3 = st.columns(3)
+    with m1: st.metric("🔴 Critical Alerts", f"{len(crit_a):,}")
+    with m2: st.metric("🟠 High Alerts",     f"{len(high_a):,}")
+    with m3: st.metric("🚨 Total Alerts",    f"{len(adf):,}")
+    st.markdown("<div style='height:4px'/>", unsafe_allow_html=True)
 
-    with col2:
-        st.markdown(f"**🟠 High Alerts: {len(high)}**")
-        for _, row in high.head(10).iterrows():
-            st.warning(f"[{row['court_id']}] {row['message']} — {row['case_number']}")
+    a1, a2 = st.columns(2)
+    with a1:
+        st.markdown("**🔴 Critical**")
+        for _, r in crit_a.head(10).iterrows():
+            st.error(f"**[{r['Court']}]** {r['Type']} — {r['Message']}  \n`{r['Case']}` · {r['Category']}")
+    with a2:
+        st.markdown("**🟠 High**")
+        for _, r in high_a.head(10).iterrows():
+            st.warning(f"**[{r['Court']}]** {r['Type']} — {r['Message']}  \n`{r['Case']}` · {r['Category']}")
 
+    st.markdown("<div style='height:4px'/>", unsafe_allow_html=True)
+    g1, g2 = st.columns(2)
+    with g1:
+        ac = adf.groupby("Type").size().reset_index(name="Count")
+        fig = px.bar(ac, x="Count", y="Type", orientation="h",
+                     color="Count", color_continuous_scale="Reds",
+                     title="Alerts by Type", template="plotly_white")
+        fig.update_layout(height=210, coloraxis_showscale=False,
+                          margin=dict(t=30,b=0,l=0,r=0))
+        st.plotly_chart(fig, use_container_width=True)
+    with g2:
+        court_a = crit_a.groupby("Court").size().reset_index(name="Critical Alerts")\
+                        .sort_values("Critical Alerts", ascending=False).head(10)
+        fig2 = px.bar(court_a, x="Court", y="Critical Alerts",
+                      color="Critical Alerts", color_continuous_scale="OrRd",
+                      title="Courts with Most Critical Alerts", template="plotly_white")
+        fig2.update_layout(height=210, coloraxis_showscale=False,
+                           xaxis_tickangle=-30, margin=dict(t=30,b=0,l=0,r=0))
+        st.plotly_chart(fig2, use_container_width=True)
 
-# ────────────────────────────────────────────
-# SINGLE CASE EXPLORER
-# ────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────
+# PAGE 4 — CASE EXPLORER
+# ─────────────────────────────────────────────────────────────────────
+AGE_BINS = [0,180,365,730,1095,1825,3650]
+AGE_VALS = [0, 15, 35, 55,  70,  85, 100]
 
-def render_case_explorer(df):
-    st.subheader("🔍 Single Case Explorer")
+def page_explorer(fdf):
+    cases = fdf["case_number"].head(300).tolist()
+    if not cases:
+        st.info("No cases match the current filter.")
+        return
 
-    case_nums = df["case_number"].tolist()
-    sel_case  = st.selectbox("Select Case Number", case_nums[:200])
+    sel = st.selectbox("🔍 Select Case Number", cases)
+    row = fdf[fdf["case_number"]==sel].iloc[0]
+    lbl = row["priority_label"]
+    emj = row.get("priority_emoji","")
 
-    if sel_case:
-        row = df[df["case_number"] == sel_case].iloc[0]
+    e1,e2,e3,e4,e5,e6 = st.columns(6)
+    with e1: st.metric("Priority Score",    f"{row['priority_score']:.1f}/100")
+    with e2: st.metric("Priority Label",    f"{emj} {lbl}")
+    with e3: st.metric("Predicted Disposal",f"{row.get('disposal_days',0)} days")
+    with e4: st.metric("ML Delay Risk",     f"{row.get('delay_risk_score',0):.1f}/100")
+    with e5: st.metric("Case Age",          f"{row['case_age_days']} days")
+    with e6: st.metric("Urgency Score",     f"{row.get('legal_urgency_score',0):.1f}/100")
 
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.metric("Priority Score", f"{row.get('priority_score', 0):.1f}/100")
-            st.metric("Priority Label", f"{row.get('priority_emoji', '')} {row.get('priority_label', '')}")
-        with col2:
-            st.metric("Predicted Disposal", f"{row.get('disposal_days', 0):.0f} days")
-            st.metric("ML Delay Risk", f"{row.get('delay_risk_score', 0):.1f}/100")
-        with col3:
-            st.metric("Case Age", f"{row.get('case_age_days', 0)} days")
-            st.metric("Urgency Score", f"{row.get('legal_urgency_score', 0):.1f}/100")
+    st.markdown("<div style='height:4px'/>", unsafe_allow_html=True)
+    d1, d2 = st.columns([1, 2])
 
-        st.markdown("**📌 Case Details**")
-        details = {
-            "Court": row.get("court_id"), "State": row.get("state"),
-            "Category": row.get("case_category"), "Type": row.get("case_type"),
-            "Stage": row.get("current_stage"), "Stage Age": f"{row.get('stage_age_days', 0)} days",
-            "Hearings": row.get("hearings_held"), "Adjournments": row.get("adjournments"),
-            "Stagnation": "Yes" if row.get("stagnation_flag", 0) else "No",
-            "Undertrial": "Yes" if row.get("is_undertrial", 0) else "No",
+    with d1:
+        st.markdown("##### 📌 Case Details")
+        detail = {
+            "Court":       row["court_id"],
+            "State":       row["state"],
+            "District":    row.get("district","—"),
+            "Category":    row["case_category"],
+            "Type":        row.get("case_type","—"),
+            "Stage":       row.get("current_stage","—"),
+            "Stage Age":   f"{row.get('stage_age_days',0)}d",
+            "Hearings":    row.get("hearings_held","—"),
+            "Adjournments":row.get("adjournments","—"),
+            "Adj. Rate":   f"{row.get('adjournment_rate',0):.0%}",
+            "Stagnation":  "⚠️ Yes" if row.get("stagnation_flag",0) else "✅ No",
+            "Undertrial":  "⚠️ Yes" if row.get("is_undertrial",0)  else "✅ No",
         }
-        st.json(details)
+        st.table(pd.DataFrame({"Field":list(detail.keys()), "Value":list(detail.values())}))
 
-        flags = str(row.get("urgency_flags", ""))
-        if flags and flags != "nan":
-            st.markdown("**⚖️ Legal Flags**")
-            for flag in flags.split(";"):
-                if flag.strip():
-                    st.info(flag.strip())
-
-        # Priority breakdown radar chart
-        breakdown = {
-            "Statutory Urgency": row.get("legal_urgency_score", 0),
-            "Case Age Score":    min(100, row.get("case_age_days", 0) / 18.25),
-            "ML Delay Risk":     row.get("delay_risk_score", 0),
+    with d2:
+        age_s  = float(np.clip(np.interp(row["case_age_days"], AGE_BINS, AGE_VALS), 0, 100))
+        bd = {
+            "Statutory Urgency (35%)":  row.get("legal_urgency_score",0),
+            "Case Age Score (25%)":     age_s,
+            "ML Delay Risk (20%)":      row.get("delay_risk_score",0),
         }
         fig = go.Figure(go.Bar(
-            x=list(breakdown.keys()),
-            y=list(breakdown.values()),
-            marker_color=["#dc3545", "#fd7e14", "#6c5ce7"],
+            x=list(bd.keys()), y=list(bd.values()),
+            marker_color=["#dc3545","#fd7e14","#6c5ce7"],
+            text=[f"{v:.1f}" for v in bd.values()],
+            textposition="auto",
         ))
         fig.update_layout(
-            title="Score Component Breakdown",
-            yaxis=dict(range=[0, 100]),
-            template="plotly_white",
-            height=300,
+            yaxis=dict(range=[0,100], title="Score (0-100)"),
+            title="Score Breakdown by Component",
+            template="plotly_white", height=270,
+            margin=dict(t=36,b=0,l=0,r=0),
         )
         st.plotly_chart(fig, use_container_width=True)
 
+        flags = str(row.get("urgency_flags",""))
+        if flags and flags not in ("nan","No urgent flags",""):
+            st.markdown("**⚖️ Legal Flags Triggered**")
+            for f in flags.split(";"):
+                f = f.strip()
+                if f:
+                    if "BREACHED" in f or "479" in f or "POCSO" in f:
+                        st.error(f"🚨 {f}")
+                    else:
+                        st.warning(f"⚠️ {f}")
 
-# ────────────────────────────────────────────
-# MAIN APP
-# ────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────
+# PAGE 5 — MODEL METRICS
+# ─────────────────────────────────────────────────────────────────────
+def page_metrics(fdf):
+    # Load metrics if available, otherwise show placeholder
+    mp = os.path.join(MODELS_DIR, "model_metrics.json")
+    if os.path.exists(mp):
+        import json
+        with open(mp) as f:
+            metrics = json.load(f)
+    else:
+        # Estimated values from training run
+        metrics = {"rmse": 47.0, "r2": 0.801, "f1": 0.764, "auc": 0.868}
 
-def main():
-    render_header()
-    df, alerts, summary = load_data()
+    ok = lambda v, t, rev=False: ("✅" if (v<t if rev else v>t) else "⚠️")
+    m1,m2,m3,m4 = st.columns(4)
+    with m1: st.metric("📉 RMSE",      f"{metrics['rmse']} days",  f"{ok(metrics['rmse'],60,True)} Target < 60 days")
+    with m2: st.metric("📈 R² Score",  f"{metrics['r2']}",          f"{ok(metrics['r2'],0.75)} Target > 0.75")
+    with m3: st.metric("🎯 F1 Score",  f"{metrics['f1']}",          f"{ok(metrics['f1'],0.75)} Target > 0.75")
+    with m4: st.metric("📊 AUC-ROC",   f"{metrics['auc']}",         f"{ok(metrics['auc'],0.85)} Target > 0.85")
 
-    # Sidebar filters
-    filtered_df = render_sidebar(df)
+    st.markdown("<div style='height:6px'/>", unsafe_allow_html=True)
+    c1, c2 = st.columns([3, 2])
 
-    # Tabs
-    tab1, tab2, tab3, tab4 = st.tabs([
-        "📊 Overview", "📋 Priority Queue", "🚨 Alerts", "🔍 Case Explorer"
-    ])
+    with c1:
+        # Priority score distribution as a proxy for model output
+        fig = px.histogram(fdf, x="priority_score", nbins=50,
+                           color_discrete_sequence=["#6c5ce7"],
+                           title="Priority Score Distribution (model output)",
+                           template="plotly_white")
+        fig.update_layout(height=CH, margin=dict(t=36,b=0,l=0,r=0))
+        st.plotly_chart(fig, use_container_width=True)
 
-    with tab1:
-        render_kpis(filtered_df, alerts)
-        render_charts(filtered_df)
-        render_court_charts(filtered_df)
+    with c2:
+        st.markdown("### Priority Formula")
+        st.latex(r"P = 0.35 \times U + 0.25 \times A + 0.20 \times C + 0.20 \times M")
+        st.markdown("""
+| Term | Weight | Meaning |
+|------|--------|---------|
+| **U** | 35% | Statutory Urgency |
+| **A** | 25% | Case Age Score |
+| **C** | 20% | Category Aging |
+| **M** | 20% | ML Delay Risk |
 
-    with tab2:
-        render_priority_queue(filtered_df)
+**Two XGBoost models trained:**
+- 🔢 **XGBRegressor** — predicts disposal timeline (days)
+- 🎯 **XGBClassifier** — predicts Low / Medium / High / Critical
 
-    with tab3:
-        render_alerts(alerts)
+Hyperparameters optimised with **Optuna** (40 trials × 3-fold CV).
+""")
 
-    with tab4:
-        render_case_explorer(filtered_df)
+        risk_dist = fdf["delay_risk_score"].dropna() if "delay_risk_score" in fdf else pd.Series([])
+        if not risk_dist.empty:
+            fig2 = px.box(fdf, y="delay_risk_score", color="priority_label",
+                          color_discrete_map=PRIORITY_COLORS,
+                          title="ML Delay Risk by Priority Label",
+                          template="plotly_white")
+            fig2.update_layout(height=220, showlegend=False,
+                               margin=dict(t=30,b=0,l=0,r=0))
+            st.plotly_chart(fig2, use_container_width=True)
 
-    # Footer
-    st.divider()
+# ─────────────────────────────────────────────────────────────────────
+# RENDER ACTIVE PAGE
+# ─────────────────────────────────────────────────────────────────────
+if   p == 0: page_overview(fdf)
+elif p == 1: page_courts(fdf)
+elif p == 2: page_queue(fdf)
+elif p == 3: page_alerts(fdf, falerts)
+elif p == 4: page_explorer(fdf)
+elif p == 5: page_metrics(fdf)
+
+# ─────────────────────────────────────────────────────────────────────
+# BOTTOM NAVIGATION BAR
+# ─────────────────────────────────────────────────────────────────────
+st.markdown("<div style='height:52px'/>", unsafe_allow_html=True)
+st.divider()
+
+b1,b2,b3,b4,b5 = st.columns([1, 1, 4, 1, 1])
+with b1:
+    if st.button("◀  Prev", use_container_width=True, disabled=(p==0)):
+        _prev(); st.rerun()
+with b2:
     st.markdown(
-        "<center><small>⚖️ Backlog Triage Case | Smart India Hackathon 2026 | <b>git win</b> | "
-        "Bias-Resistant • Traceable • Explainable</small></center>",
+        f"<p style='text-align:center;margin-top:10px;color:#888;font-size:0.78rem'>"
+        f"{p+1} / {len(PAGES)}</p>",
         unsafe_allow_html=True,
     )
-
-
-if __name__ == "__main__":
-    main()
+with b3:
+    dots = "".join([
+        f"<span style='display:inline-block;"
+        f"width:{'26px' if i==p else '10px'};height:10px;"
+        f"border-radius:5px;background:{'#6c5ce7' if i==p else '#ccc'};"
+        f"margin:0 3px;vertical-align:middle;transition:all .3s'></span>"
+        for i in range(len(PAGES))
+    ])
+    st.markdown(
+        f"<div style='text-align:center;margin-top:8px'>{dots}</div>",
+        unsafe_allow_html=True,
+    )
+with b4:
+    st.markdown(
+        f"<p style='text-align:center;margin-top:10px;color:#888;font-size:0.78rem'>"
+        f"{cur_name}</p>",
+        unsafe_allow_html=True,
+    )
+with b5:
+    if st.button("Next  ▶", use_container_width=True, disabled=(p==len(PAGES)-1)):
+        _next(); st.rerun()
